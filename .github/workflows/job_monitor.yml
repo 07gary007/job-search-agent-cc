@@ -1,0 +1,51 @@
+name: Indeed Job Monitor
+
+on:
+  schedule:
+    # Every 30 min on weekdays, 9am–7pm Toronto time (ET = UTC-4 summer)
+    # UTC 13:00–23:00 = 9am–7pm ET; stays within JSearch-free limits if needed
+    - cron: "0,30 13-23 * * 1-5"
+  workflow_dispatch: # allow manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write # needed to commit seen_jobs.json back to repo
+
+concurrency:
+  group: job-monitor   # prevent overlapping runs
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run job monitor
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
+
+      - name: Commit updated seen_jobs.json
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add data/seen_jobs.json
+          git diff --staged --quiet || git commit -m "chore: update seen jobs [skip ci]"
+          git push

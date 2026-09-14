@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install -r requirements.txt -q 2>&1 | tail -5)",
+      "Bash(python main.py 2>&1)",
+      "Bash(echo '[]' > /Users/garyli/Desktop/job_serach_agent/data/seen_jobs.json && python3 main.py 2>&1)"
+    ]
+  }
+}
