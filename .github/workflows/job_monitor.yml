@@ -2,9 +2,9 @@ name: Indeed Job Monitor
 
 on:
   schedule:
-    # Every 2 hours, every day. GitHub may start scheduled workflows a few
-    # minutes late, but this keeps the monitor running around the clock.
-    - cron: "0 */2 * * *"
+    # Every 2 hours, every day, at minute 17. Avoiding minute 0 reduces the
+    # chance of GitHub delaying or dropping the run during peak load.
+    - cron: "17 */2 * * *"
   workflow_dispatch: # allow manual trigger from GitHub Actions tab
 
 permissions:
