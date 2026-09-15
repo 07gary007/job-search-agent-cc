@@ -90,13 +90,22 @@ Scoring rules (start at 5, adjust):
   +1 AI-focused company or known tech brand
   -3 completely unrelated role (geotechnical, civil, finance with no AI)
 
+CEC-related experience classification (ignore duration completely):
+  - Return "yes" when the actual duties clearly look like skilled work in a
+    TEER 0–3 occupation that could be relevant to the Canadian Experience
+    Class, such as software, AI/ML, data, or engineering roles.
+  - Return "no" when the duties clearly look like TEER 4–5 or non-skilled work.
+  - Return "unclear" when the posting does not provide enough information.
+  - This is a job-duty relevance signal only, not a determination that the
+    candidate satisfies IRCC's full CEC requirements.
+
 Return ONLY valid JSON (no markdown):
-{{"score": <integer 1-10>, "location_type": "<downtown|toronto|gta|remote|other>", "match_reasons": ["<reason>", "<reason>"], "red_flags": [], "verdict": "<one sentence>"}}"""
+{{"score": <integer 1-10>, "location_type": "<downtown|toronto|gta|remote|other>", "cec_relevant": "<yes|no|unclear>", "match_reasons": ["<reason>", "<reason>"], "red_flags": [], "verdict": "<one sentence>"}}"""
 
     client = _get_client()
     msg = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=350,
+        max_tokens=400,
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -106,11 +115,17 @@ Return ONLY valid JSON (no markdown):
         raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
 
     try:
-        return json.loads(raw)
+        data = json.loads(raw)
+        cec_relevant = str(data.get("cec_relevant", "unclear")).lower().strip()
+        if cec_relevant not in {"yes", "no", "unclear"}:
+            cec_relevant = "unclear"
+        data["cec_relevant"] = cec_relevant
+        return data
     except json.JSONDecodeError:
         return {
             "score": 5,
             "location_type": "unknown",
+            "cec_relevant": "unclear",
             "match_reasons": ["Parse error — manual review"],
             "red_flags": [],
             "verdict": "Could not parse AI response",
