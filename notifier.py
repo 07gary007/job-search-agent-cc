@@ -1,4 +1,5 @@
 import os
+import math
 from html import escape
 import requests
 from datetime import date
@@ -6,6 +7,17 @@ from datetime import date
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+MIN_NOTIFICATION_SCORE = 7
+
+
+def _is_qualifying_score(value: object) -> bool:
+    """Final safety gate: Telegram never receives a score below 7."""
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and MIN_NOTIFICATION_SCORE <= value <= 10
+    )
 
 
 def _html(value) -> str:
@@ -54,6 +66,9 @@ def _relative_date(date_posted) -> str:
 def send_job_notification(job: dict, score_data: dict) -> bool:
     """Send a formatted Indeed job notification to Telegram."""
     score = score_data.get("score", 0)
+    if not _is_qualifying_score(score):
+        print(f"    Telegram skipped: invalid or below-{MIN_NOTIFICATION_SCORE} score ({score!r})")
+        return False
     emoji = _score_emoji(score)
 
     title = _html(job.get("title", "Unknown Role"))
@@ -128,39 +143,3 @@ def _send_message(text: str, *, parse_mode: str | None = None) -> bool:
     if not resp.ok:
         print(f"    Telegram error: {resp.status_code} {resp.text[:300]}")
     return resp.ok
-
-
-def send_job_digest(scored_jobs: list[tuple[dict, dict]]) -> bool:
-    """Send this run's compact list, including low-scoring jobs."""
-    if not scored_jobs:
-        return _send_message("📋 本轮岗位监测\n没有发现新的岗位。")
-
-    lines: list[str] = []
-    for index, (job, score_data) in enumerate(scored_jobs, 1):
-        title = str(job.get("title", "Unknown Role")).replace("\n", " ").strip()
-        score = score_data.get("score", "N/A")
-        url = str(job.get("job_url", "#")).strip()
-        lines.append(
-            f"{index}. {title}｜{score}/10｜CEC相关：{_cec_label(score_data)}\n{url}"
-        )
-
-    # Telegram caps text messages at 4096 characters. Keep each chunk below
-    # that limit while retaining a numbered list in every message.
-    chunks: list[str] = []
-    current = ""
-    for line in lines:
-        candidate = f"{current}\n{line}" if current else line
-        if len(candidate) > 3800 and current:
-            chunks.append(current)
-            current = line
-        else:
-            current = candidate
-    if current:
-        chunks.append(current)
-
-    all_ok = True
-    for index, chunk in enumerate(chunks, 1):
-        header = f"📋 本轮岗位监测列表（{index}/{len(chunks)}）"
-        body = f"{header}\n{chunk}"
-        all_ok = _send_message(body) and all_ok
-    return all_ok

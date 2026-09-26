@@ -8,7 +8,7 @@ Automatically scans Indeed every 2 hours for junior AI/ML Engineer roles in Toro
 GitHub Actions (every 2h, around the clock)
   → Indeed via python-jobspy
   → Claude haiku  (score 1-10 vs resume)
-  → Telegram      (compact list every run; detailed message if score ≥ 7)
+  → Telegram      (notify only if score ≥ 7)
   → commit seen_jobs.json  (dedup next run)
 ```
 
@@ -65,10 +65,8 @@ Go to your repo → **Actions tab** → click **"I understand my workflows, go a
 
 To test immediately: **Actions → Indeed Job Monitor → Run workflow**
 
-The monitor sends one compact list on every run, including each new job's
-title, score, application link, and whether the role appears relevant to CEC
-skilled work. Jobs scoring 7 or higher also keep the detailed notification
-format shown below, with the CEC field added.
+The monitor stays silent when there are no qualifying jobs. It sends the
+detailed notification shown below only for a score of 7 or higher.
 
 The CEC label is a job-duty relevance signal and ignores duration. It is not a
 legal determination that the candidate satisfies every IRCC Canadian
@@ -77,6 +75,11 @@ Experience Class requirement.
 ---
 
 ## What you'll receive on Telegram
+
+The monitor only sends an individual job when Claude returns a valid numeric
+score from 7 through 10. Scores below 7, malformed scores, and failed scoring
+responses are never sent to Telegram. It also no longer sends low-score digests
+or an empty-run message.
 
 ```
 ⭐ 8/10 — Junior AI Engineer

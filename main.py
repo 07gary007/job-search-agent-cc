@@ -3,6 +3,7 @@ Indeed Job Monitor — main entry point
 Fetches new junior AI/ML jobs in Toronto, scores them against Gary's resume,
 and pushes high-quality matches to Telegram.
 """
+import math
 import sys
 from pathlib import Path
 
@@ -15,10 +16,20 @@ except ImportError:
 
 from scraper import fetch_jobs
 from scorer import score_job
-from notifier import send_job_digest, send_job_notification
+from notifier import send_job_notification
 from storage import load_seen_jobs, save_seen_jobs, mark_seen
 
-MIN_SCORE = 7  # Detailed notification threshold; digest includes every new job
+MIN_SCORE = 7
+
+
+def is_qualifying_score(value: object) -> bool:
+    """Only a valid numeric Claude score from 7 through 10 can notify."""
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and MIN_SCORE <= value <= 10
+    )
 
 
 def main() -> None:
@@ -48,15 +59,12 @@ def main() -> None:
     print(f"🆕 New (unseen) jobs: {len(new_jobs)}")
 
     if not new_jobs:
-        print("\n✅ Nothing new. Sending an empty digest.")
-        if not send_job_digest([]):
-            sys.exit(1)
+        print("\n✅ Nothing new. Exiting without Telegram notification.")
         return
 
     # ── 4. Score each job with Claude ─────────────────────────
     print(f"\n🤖 Scoring {len(new_jobs)} jobs with Claude haiku...")
     notified = 0
-    scored_jobs: list[tuple[dict, dict]] = []
     processing_failed = False
 
     for i, job in enumerate(new_jobs, 1):
@@ -67,45 +75,27 @@ def main() -> None:
 
         try:
             score_data = score_job(job)
-            raw_score = score_data.get("score", 0)
-            score = int(raw_score)
+            score = score_data.get("score")
             verdict = score_data.get("verdict", "")[:70]
-            print(f"    Score: {score}/10  |  {verdict}")
-            scored_jobs.append((job, score_data))
-            if score < MIN_SCORE:
-                print(f"    ✅ Included in digest ({score} < {MIN_SCORE})")
+            print(f"    Score: {score!r}/10  |  {verdict}")
 
         except Exception as exc:
             print(f"    ❌ Error: {exc}")
             processing_failed = True
-            scored_jobs.append((
-                job,
-                {
-                    "score": "N/A",
-                    "cec_relevant": "unclear",
-                    "match_reasons": [],
-                    "red_flags": [],
-                    "verdict": "Scoring failed; will retry next run",
-                },
-            ))
-
-    # ── 5. Send digest and detailed alerts ────────────────────
-    if not send_job_digest(scored_jobs):
-        print("❌ Digest delivery failed; leaving jobs uncommitted for retry")
-        processing_failed = True
-
-    for job, score_data in scored_jobs:
-        try:
-            score = int(score_data.get("score", 0))
-        except (TypeError, ValueError):
             continue
-        if score < MIN_SCORE:
+
+        # Do not coerce strings such as "7" or values such as NaN: malformed
+        # model output must never create a notification.
+        if not is_qualifying_score(score):
+            print(f"    ⏭  Invalid or below threshold ({score!r}); skipped")
             continue
+
+        # notifier.py repeats the threshold so any future caller is also safe.
         if send_job_notification(job, score_data):
             notified += 1
-            print("    ✅ Sent detailed notification to Telegram")
+            print("    ✅ Sent job notification to Telegram")
         else:
-            print("    ❌ Detailed Telegram send failed")
+            print("    ❌ Telegram send failed")
             processing_failed = True
 
     if processing_failed:
